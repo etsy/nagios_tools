@@ -1,0 +1,14 @@
+Some handy scripts we've written for Nagios, at Etsy:
+
+
+check_graphite_data:
+    Alert on data, based on number from Graphite.
+    Usage:
+        check_graphite_data <options>
+    Options:
+        -c <num> --crit=<num>       Critical threshold
+        -w <num> --warn=<num>       Warning threshold
+        -u <url> --url=<url>        Graphite graph URL
+        -r                          Reverse - Alert when the value is UNDER warn/crit instead of OVER
+        -s <secs> --seconds=<secs>  Average over the last N seconds of data
+                                        Default: only use the most recent data point
