@@ -4,20 +4,20 @@ import getopt
 import sys
 import urllib
 
-STATE_OK = 0
-STATE_WARNING = 1
-STATE_CRITICAL = 2
-STATE_UNKNOWN = 3
-STATE_DEPENDENT = 4
+# Import the nagios bits for python
+sys.path.insert(0, '/usr/nagios/libexec')
+import utils
+
 
 def usage():
     print 'Usage:'
     print '\tcheck_graphite_data <options>'
     print 'Options:'
-    print '\t-c <num> --crit=<num>\t\tCritical threshold'
-    print '\t-w <num> --warn=<num>\t\tWarning threshold'
-    print '\t-u <url> --url=<url>\t\tGraphite rawData URL'
+    print '\t-c <num> | --crit=<num>\t\tCritical threshold'
+    print '\t-w <num> | --warn=<num>\t\tWarning threshold'
+    print '\t-u <url> | --url=<url>\t\tGraphite rawData URL'
     print '\t-r\t\t\t\tReverse - Alert when the value is UNDER warn/crit instead of OVER'
+    print '\t--d1 <url> --d2 <url>\t\tDiff the latest values between two graphs'
     print '\t-s <secs> --seconds=<secs>\tAverage over the last N seconds of data'
 
 
@@ -59,16 +59,18 @@ def get_value(url, seconds=0):
 
 def main(argv):
     try:
-        opts, args = getopt.getopt(argv, 'hru:c:w:s:', ['help', 'url=', 'crit=', 'warn=', 'seconds='])
+        opts, args = getopt.getopt(argv, 'hru:c:w:s:', ['help', 'url=', 'crit=', 'warn=', 'seconds=', 'd1=', 'd2='])
     except getopt.GetoptError, err:
         print str(err)
-        sys.exit(STATE_UNKNOWN)
+        sys.exit(utils.STATE_UNKNOWN)
 
     url = None
     warn = None
     crit = None
     seconds = 0
     reverse = False
+    diff1 = None
+    diff2 = None
     for opt, arg in opts:
         if opt in ('-h', '--help'):
             usage()
@@ -83,29 +85,46 @@ def main(argv):
             seconds = int(arg)
         elif opt in ('-r'):
             reverse = True
-    if (url == None) or (warn == None) or (crit == None):
+        elif opt in ('--d1'):
+            diff1 = arg
+        elif opt in ('--d2'):
+            diff2 = arg
+    if (url == None and (diff1 == None and diff2 == None)) or (warn == None) or (crit == None):
         usage()
-        sys.exit(STATE_UNKNOWN)
+        sys.exit(utils.STATE_UNKNOWN)
+    if (diff1 == None and diff2 != None) or (diff1 != None and diff2 == None):
+        usage()
+        sys.exit(utils.STATE_UNKNOWN)
 
-    graphite_data = get_value(url, seconds)
+    if diff1 or diff2:
+        graphite_data1 = get_value(diff1, seconds)
+        graphite_data2 = get_value(diff2, seconds)
+        graphite_data = abs(graphite_data1 - graphite_data2)
+    else:
+        graphite_data = get_value(url, seconds)
 
     print 'Current value: %s, warn threshold: %s, crit threshold: %s' % \
             (graphite_data, warn, crit)
 
     if reverse == True:
         if crit >= graphite_data:
-            sys.exit(STATE_CRITICAL)
+            sys.exit(utils.STATE_CRITICAL)
         elif warn >= graphite_data:
-            sys.exit(STATE_WARNING)
+            sys.exit(utils.STATE_WARNING)
         else:
-            sys.exit(STATE_OK)
+            sys.exit(utils.STATE_OK)
     else:
-        if graphite_data >= crit:
-            sys.exit(STATE_CRITICAL)
-        elif graphite_data >= warn:
-            sys.exit(STATE_WARNING)
-        else:
-            sys.exit(STATE_OK)
+		if crit == 0.0 and graphite_data != crit:
+			print "boo!"
+			sys.exit(utils.STATE_CRITICAL)
+		elif graphite_data >= crit:
+			sys.exit(utils.STATE_CRITICAL)
+		elif warn == 0.0 and graphite_data != warn:
+			sys.exit(utils.STATE_WARNING)
+		elif graphite_data >= warn:
+			sys.exit(utils.STATE_WARNING)
+		else:
+			sys.exit(utils.STATE_OK)
 
 
 if __name__ == '__main__':
