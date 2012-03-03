@@ -4,31 +4,42 @@ import getopt
 import sys
 import urllib
 
-# Import the nagios bits for python
-sys.path.insert(0, '/usr/nagios/libexec')
-import utils
-
+STATE_OK = 0
+STATE_WARNING = 1
+STATE_CRITICAL = 2
+STATE_UNKNOWN = 3
+STATE_DEPENDENT = 4
 
 def usage():
     print 'Usage:'
     print '\tcheck_graphite_data <options>'
     print 'Options:'
-    print '\t-c <num> | --crit=<num>\t\tCritical threshold'
-    print '\t-w <num> | --warn=<num>\t\tWarning threshold'
-    print '\t-u <url> | --url=<url>\t\tGraphite rawData URL'
+    print '\t-c <num> --crit=<num>\t\tCritical threshold'
+    print '\t-w <num> --warn=<num>\t\tWarning threshold'
+    print '\t-u <url> --url=<url>\t\tGraphite graph URL'
     print '\t-r\t\t\t\tReverse - Alert when the value is UNDER warn/crit instead of OVER'
-    print '\t--d1 <url> --d2 <url>\t\tDiff the latest values between two graphs'
     print '\t-s <secs> --seconds=<secs>\tAverage over the last N seconds of data'
+    print '\t--d1 <url> --d2 <url>\t\tDiff the latest values between two graphs'
+    print '\t-W --holt-winters\t\tPerform a Holt-Winters check'
+    print '\t-U --critupper\t\t\tUpper Holt-Winters band breach causes a crit,'
+    print '\t\t\t\t\t- breaching lower band causes a warn'
+    print '\t-L --critlower\t\t\tLower Holt-Winters band breach causes a crit,'
+    print '\t\t\t\t\t- breaching upper band causes a warn'
+    print '\t(If neither -U nor -L are given, we will always warn)'
 
 
-def get_value(url, seconds=0):
-    """Get the value from a Graphite graph"""
-
+def pull_graphite_data(url):
+    """Pull down raw data from Graphite"""
     # Make sure the url ends with '&rawData'
     if not url.endswith('&rawData'):
         url = url + '&rawData'
-
     data = urllib.urlopen(url).read()
+    return data
+
+
+def eval_graphite_data(data, seconds):
+    """Get the most recent correct value from the data"""
+
     sample_period = int(data.split('|')[0].split(',')[-1])
     all_data_points = data.split('|')[-1].split(',')
 
@@ -57,20 +68,49 @@ def get_value(url, seconds=0):
     return data_value
 
 
+def get_hw_value(url, seconds=0):
+    """Get the Holt-Winters value from a Graphite graph"""
+
+    data = pull_graphite_data(url)
+    for line in data.split():
+        if line.startswith('holtWintersConfidenceUpper'):
+            graphite_upper = eval_graphite_data(line, seconds)
+        elif line.startswith('holtWintersConfidenceLower'):
+            graphite_lower = eval_graphite_data(line, seconds)
+        else:
+            graphite_data = eval_graphite_data(line, seconds)
+
+    return graphite_data, graphite_lower, graphite_upper
+
+
+def get_value(url, seconds=0):
+    """Get the value from a Graphite graph"""
+
+    data = pull_graphite_data(url)
+    data_value = eval_graphite_data(data, seconds)
+    return data_value
+
+
 def main(argv):
     try:
-        opts, args = getopt.getopt(argv, 'hru:c:w:s:', ['help', 'url=', 'crit=', 'warn=', 'seconds=', 'd1=', 'd2='])
+        opts, args = getopt.getopt(argv, 'hWULru:c:w:s:',
+                                    ['help', 'holt-winters', 'critupper',
+                                     'critlower', 'url=', 'crit=', 'warn=',
+                                     'seconds=', 'd1=', 'd2='])
     except getopt.GetoptError, err:
         print str(err)
-        sys.exit(utils.STATE_UNKNOWN)
+        sys.exit(STATE_UNKNOWN)
 
     url = None
     warn = None
     crit = None
     seconds = 0
-    reverse = False
     diff1 = None
     diff2 = None
+    reverse = False
+    hw = None
+    critupper = None
+    critlower = None
     for opt, arg in opts:
         if opt in ('-h', '--help'):
             usage()
@@ -89,14 +129,33 @@ def main(argv):
             diff1 = arg
         elif opt in ('--d2'):
             diff2 = arg
-    if (url == None and (diff1 == None and diff2 == None)) or (warn == None) or (crit == None):
+        elif opt in ('-W', '--holtwinters'):
+            hw = True
+        elif opt in ('-U', '--critupper'):
+            critupper = True
+        elif opt in ('-L', '--critlower'):
+            critlower = True
+    if not hw and ((url == None) or (warn == None) or (crit == None)) \
+            and not diff1 and not diff2:
         usage()
-        sys.exit(utils.STATE_UNKNOWN)
+        sys.exit(STATE_UNKNOWN)
+
     if (diff1 == None and diff2 != None) or (diff1 != None and diff2 == None):
         usage()
-        sys.exit(utils.STATE_UNKNOWN)
+        sys.exit(STATE_UNKNOWN)
 
-    if diff1 or diff2:
+    if hw:
+        graphite_data, graphite_lower, graphite_upper = get_hw_value(url, seconds)
+        print 'Current value: %s, lower band: %s, upper band: %s' % \
+               (graphite_data, graphite_lower, graphite_upper)
+        if (graphite_data > graphite_upper) or (graphite_data < graphite_lower):
+            if critupper or critlower:
+                sys.exit(STATE_CRITICAL)
+            else:
+                sys.exit(STATE_WARNING)
+        else:
+            sys.exit(STATE_OK)
+    elif diff1 or diff2:
         graphite_data1 = get_value(diff1, seconds)
         graphite_data2 = get_value(diff2, seconds)
         graphite_data = abs(graphite_data1 - graphite_data2)
@@ -104,27 +163,21 @@ def main(argv):
         graphite_data = get_value(url, seconds)
 
     print 'Current value: %s, warn threshold: %s, crit threshold: %s' % \
-            (graphite_data, warn, crit)
-
+           (graphite_data, warn, crit)
     if reverse == True:
         if crit >= graphite_data:
-            sys.exit(utils.STATE_CRITICAL)
+            sys.exit(STATE_CRITICAL)
         elif warn >= graphite_data:
-            sys.exit(utils.STATE_WARNING)
+            sys.exit(STATE_WARNING)
         else:
-            sys.exit(utils.STATE_OK)
+            sys.exit(STATE_OK)
     else:
-		if crit == 0.0 and graphite_data != crit:
-			print "boo!"
-			sys.exit(utils.STATE_CRITICAL)
-		elif graphite_data >= crit:
-			sys.exit(utils.STATE_CRITICAL)
-		elif warn == 0.0 and graphite_data != warn:
-			sys.exit(utils.STATE_WARNING)
-		elif graphite_data >= warn:
-			sys.exit(utils.STATE_WARNING)
-		else:
-			sys.exit(utils.STATE_OK)
+        if graphite_data >= crit:
+            sys.exit(STATE_CRITICAL)
+        elif graphite_data >= warn:
+            sys.exit(STATE_WARNING)
+        else:
+            sys.exit(STATE_OK)
 
 
 if __name__ == '__main__':
