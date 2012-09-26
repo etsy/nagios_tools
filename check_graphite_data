@@ -33,9 +33,17 @@ def pull_graphite_data(url):
     # Make sure the url ends with '&rawData'
     if not url.endswith('&rawData'):
         url = url + '&rawData'
-    data = urllib.urlopen(url).read()
-    return data
 
+    # Catch URL errors
+    try:
+	data = urllib.urlopen(url).read()
+	if len(data) == 0:
+	    print "Error: No data was returned. Did you specify an existing metric? - " + url
+	    sys.exit(STATE_UNKNOWN)
+	return data
+    except Exception,e:
+	print "Error: "+ str(e) +" - " + url
+        sys.exit(STATE_UNKNOWN)
 
 def eval_graphite_data(data, seconds):
     """Get the most recent correct value from the data"""
