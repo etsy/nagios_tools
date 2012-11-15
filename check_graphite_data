@@ -26,6 +26,9 @@ def usage():
     print '\t-L --critlower\t\t\tLower Holt-Winters band breach causes a crit,'
     print '\t\t\t\t\t- breaching upper band causes a warn'
     print '\t(If neither -U nor -L are given, we will always warn)'
+    print '\t--scale=<multiplier>\t\tscale, eg 8 to treat bytes as bits'
+    print '\t--scale-invert=<divisor>\tscale, eg 1073741824 to treat bytes as GiB'
+    print '\t\t\t\t\t- --scale{-invert} lets you give thresholds in sane units'
 
 
 def pull_graphite_data(url):
@@ -96,7 +99,9 @@ def main(argv):
         opts, args = getopt.getopt(argv, 'hWULru:c:w:s:',
                                     ['help', 'holt-winters', 'critupper',
                                      'critlower', 'url=', 'crit=', 'warn=',
-                                     'seconds=', 'd1=', 'd2='])
+                                     'seconds=', 'd1=', 'd2='
+				     ,'scale=' ,'scale-invert='
+				     ])
     except getopt.GetoptError, err:
         print str(err)
         sys.exit(STATE_UNKNOWN)
@@ -111,6 +116,7 @@ def main(argv):
     hw = None
     critupper = None
     critlower = None
+    scale = 1
     for opt, arg in opts:
         if opt in ('-h', '--help'):
             usage()
@@ -135,6 +141,10 @@ def main(argv):
             critupper = True
         elif opt in ('-L', '--critlower'):
             critlower = True
+        elif opt in ('--scale'):
+            scale = float(arg)
+        elif opt in ('--scale-invert'):
+            scale = 1 / float(arg)
     if not hw and ((url == None) or (warn == None) or (crit == None)) \
             and not diff1 and not diff2:
         usage()
@@ -161,6 +171,7 @@ def main(argv):
         graphite_data = abs(graphite_data1 - graphite_data2)
     else:
         graphite_data = get_value(url, seconds)
+    graphite_data *= scale
 
     print 'Current value: %s, warn threshold: %s, crit threshold: %s' % \
            (graphite_data, warn, crit)
