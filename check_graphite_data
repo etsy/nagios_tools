@@ -25,7 +25,7 @@ def usage():
     print '\t\t\t\t\t- breaching lower band causes a warn'
     print '\t-L --critlower\t\t\tLower Holt-Winters band breach causes a crit,'
     print '\t\t\t\t\t- breaching upper band causes a warn'
-    print '\t(If neither -U nor -L are given, we will always warn)'
+    print '\t(If -W, but neither -U nor -L are given, we will always warn)'
     print '\t--scale=<multiplier>\t\tscale, eg 8 to treat bytes as bits'
     print '\t--scale-invert=<divisor>\tscale, eg 1073741824 to treat bytes as GiB'
     print '\t\t\t\t\t- --scale{-invert} lets you give thresholds in sane units'
