@@ -49,9 +49,9 @@ def eval_graphite_data(data, seconds):
     # If that data point is None, grab the one before it.
     # If that is None too, return 0.0.
     if seconds <= sample_period:
-        if eval(all_data_points[-1]):
+        if all_data_points[-1] != "None":
             data_value = float(all_data_points[-1])
-        elif eval(all_data_points[-2]):
+        elif all_data_points[-2] != "None":
             data_value = float(all_data_points[-2])
         else:
             data_value = 0.0
@@ -60,7 +60,7 @@ def eval_graphite_data(data, seconds):
     # many sample periods we wanted (python always rounds division *down*)
         data_points = (seconds/sample_period)
         data_set = [ float(x) for x in all_data_points[-data_points:]
-                     if eval(x) ]
+                     if x != "None" ]
         if data_set:
             data_value = float( sum(data_set) / len(data_set) )
         else:
