@@ -17,4 +17,7 @@ Options:
                                     - breaching lower band causes a warn
     -L --critlower              Lower Holt-Winters band breach causes a crit,
                                     - breaching upper band causes a warn
-    (If neither -U nor -L are given, we will always warn)
+    (If -W, but neither -U nor -L are given, we will always warn)
+    --scale=<multiplier>        scale, eg 8 to treat bytes as bits
+    --scale-invert=<divisor>    scale, eg 1073741824 to treat bytes as GiB
+                                    - --scale{-invert} lets you give thresholds in sane units
